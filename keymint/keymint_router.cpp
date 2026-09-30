@@ -1749,9 +1749,9 @@ extern "C" AIBinder* teesim_router_new_device(int32_t security_level, AIBinder* 
   // restoring real_binder to exactly the count keystore2 holds; adding a decStrong here would
   // under-reference it.
   if (static_cast<SecurityLevel>(security_level) == SecurityLevel::SOFTWARE) {
-    LOGI("teesim_router_new_device: SOFTWARE-level KeyMint (real=%p, remote=%d); NOT wrapping",
+    LOGW("teesim_router_new_device: promoted SOFTWARE-level KeyMint (real=%p, remote=%d) to TEE wrapper for target protection",
          real_binder, real_binder ? AIBinder_isRemote(real_binder) : -1);
-    return nullptr;
+    security_level = static_cast<int32_t>(SecurityLevel::TRUSTED_ENVIRONMENT);
   }
   // keystore2 resolves a distinct IKeyMintDevice for TrustedEnvironment (level 1) and, when present,
   // StrongBox (level 2); each is wrapped by its own local device at its real level. remote=0 marks a
