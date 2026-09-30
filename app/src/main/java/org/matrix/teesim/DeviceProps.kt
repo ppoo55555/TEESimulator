@@ -35,7 +35,10 @@ object DeviceProps {
         )
 
     /** A last-resort osVersion derived from the running platform SDK. */
-    fun deviceOsVersion(): Int = osVersionBySdk[Build.VERSION.SDK_INT] ?: 170000
+    fun deviceOsVersion(): Int {
+        val sdk = prop("ro.build.version.sdk").toIntOrNull() ?: Build.VERSION.SDK_INT
+        return osVersionBySdk[sdk] ?: 130000
+    }
 
     /** Parse a config osVersion literal: "16", "16.0.0", or an already-encoded int string. */
     fun parseOsVersion(literal: String): Int? {
@@ -90,9 +93,14 @@ object DeviceProps {
      */
     fun bootSecurityPatch(): String = vendorSecurityPatch()
 
-    /** osVersion from getprop (ro.build.version.release), encoded, or null when unavailable. */
-    fun propOsVersion(): Int? =
-        parseOsVersion(prop("ro.build.version.release", Build.VERSION.RELEASE ?: ""))
+    /** osVersion from getprop (prioritizing sdk over spoofed release), encoded, or null when unavailable. */
+    fun propOsVersion(): Int? {
+        val sdk = prop("ro.build.version.sdk").toIntOrNull() ?: Build.VERSION.SDK_INT
+        if (sdk in osVersionBySdk) {
+            return osVersionBySdk[sdk]
+        }
+        return parseOsVersion(prop("ro.build.version.release", Build.VERSION.RELEASE ?: ""))
+    }
 
     /**
      * Resolve one patch-level component from the config mini-language to its integer encoding, or
