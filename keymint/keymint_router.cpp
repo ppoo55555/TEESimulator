@@ -1467,6 +1467,23 @@ class TeesimKeyMintDevice : public BnKeyMintDevice {
     LOGD("PatchAttest: real HAL returned %zu cert(s) in %llums; re-signing only the leaf under the "
          "keybox",
          real.certificateChain.size(), real_ms);
+    // If the real HAL returned only SOFTWARE-level key characteristics (no TrustedEnvironment or
+    // StrongBox), the underlying HAL does not provide hardware-backed attestation (e.g. an in-process
+    // km_compat or software Keystore fallback). Fall back to Simulate (generation in the TA) so a
+    // hardware-level TEE key and certificate are minted instead.
+    bool has_hw_security = false;
+    for (const auto& kc : real.keyCharacteristics) {
+      if (kc.securityLevel == SecurityLevel::TRUSTED_ENVIRONMENT ||
+          kc.securityLevel == SecurityLevel::STRONGBOX) {
+        has_hw_security = true;
+        break;
+      }
+    }
+    if (!has_hw_security) {
+      LOGW("PatchAttest: real HAL returned SOFTWARE-level key (no TEE/StrongBox characteristics) after %llums; generating instead",
+           real_ms);
+      return Simulate(ta, keyParams, std::nullopt, out);
+    }
     const auto& leaf = real.certificateChain.front().encodedCertificate;
     TsCreationResult* res = nullptr;
     Elapsed ta_el;
@@ -1749,9 +1766,9 @@ extern "C" AIBinder* teesim_router_new_device(int32_t security_level, AIBinder* 
   // restoring real_binder to exactly the count keystore2 holds; adding a decStrong here would
   // under-reference it.
   if (static_cast<SecurityLevel>(security_level) == SecurityLevel::SOFTWARE) {
-    LOGI("teesim_router_new_device: SOFTWARE-level KeyMint (real=%p, remote=%d); NOT wrapping",
+    LOGW("teesim_router_new_device: promoted SOFTWARE-level KeyMint (real=%p, remote=%d) to TEE wrapper for target protection",
          real_binder, real_binder ? AIBinder_isRemote(real_binder) : -1);
-    return nullptr;
+    security_level = static_cast<int32_t>(SecurityLevel::TRUSTED_ENVIRONMENT);
   }
   // keystore2 resolves a distinct IKeyMintDevice for TrustedEnvironment (level 1) and, when present,
   // StrongBox (level 2); each is wrapped by its own local device at its real level. remote=0 marks a

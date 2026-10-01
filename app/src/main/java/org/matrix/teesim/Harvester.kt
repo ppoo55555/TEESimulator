@@ -320,7 +320,9 @@ object Harvester {
      * keymasterVersionFor): Keymaster 3.0 (<=8.1) = 2, 4.0 (9/10) = 3, 4.1 (11) = 4; KeyMint N.0
      * (12+) = N*100.
      */
-    fun fabricatedAttestationVersion(sdk: Int = Build.VERSION.SDK_INT): Int =
+    fun fabricatedAttestationVersion(
+        sdk: Int = DeviceProps.prop("ro.build.version.sdk").toIntOrNull() ?: Build.VERSION.SDK_INT
+    ): Int =
         when {
             sdk <= 27 -> 2 // <= Android 8.1 (Keymaster 3.0); below our floor, best effort
             sdk <= 29 -> 3 // Android 9, 10 (Keymaster 4.0)
@@ -502,8 +504,21 @@ object Harvester {
      * key/hash), persist, and return the effective record.
      */
     fun run(context: Context): Record {
-        val existing = loadPersisted()
-        val fresh = tryHarvest()
+        val persisted = loadPersisted()
+        val existing = if (persisted != null && persisted.attestationSecurityLevel < SEC_LEVEL_TEE) {
+            SystemLogger.warning("Harvester: persisted record has SOFTWARE-level (0), discarding")
+            null
+        } else {
+            persisted
+        }
+
+        val rawFresh = tryHarvest()
+        val fresh = if (rawFresh != null && rawFresh.attestationSecurityLevel < SEC_LEVEL_TEE) {
+            SystemLogger.warning("Harvester: harvested leaf is SOFTWARE-level (0), discarding and forcing TEE fallback")
+            null
+        } else {
+            rawFresh
+        }
 
         val effective =
             when {

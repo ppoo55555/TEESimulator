@@ -278,6 +278,15 @@ fn patch_key_description(key_desc: &[u8], ov: &PatchOverrides) -> Result<Vec<u8>
         return Err(err(&format!("key description has {} fields, expected 8", fields.len())));
     }
 
+    // Reject an attestation leaf issued at SecurityLevel::Software (0). Patch mode requires a
+    // hardware-backed TEE leaf; re-signing a software leaf would yield an attestation with
+    // attestationSecurityLevel = Software (0), causing security scanners to report unverified software.
+    // Failing here triggers PatchAttest's fallback to Simulate (generation in the TA).
+    let sec_level = read_elem(fields[1])?;
+    if sec_level.tag == [0x0a] && sec_level.value == [0x00] {
+        return Err(err("leaf attestationSecurityLevel is Software (0); real HAL is not hardware-backed"));
+    }
+
     // (tag number, replacement element) for every field we own. The root of trust is a bare SEQUENCE
     // wrapped in its `[704] EXPLICIT` tag; the levels are integers KeyMint stores as `[tag] EXPLICIT
     // INTEGER`; the IDs are byte strings stored as `[tag] EXPLICIT OCTET STRING`.
